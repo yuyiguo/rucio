@@ -1,4 +1,23 @@
--- Rucio DB functions and procedure definitions for Oracle RDBMS  
+/*
+Current procedures and triggers
+
+SQL> select object_type, object_name from user_procedures;
+
+OBJECT_TYPE	    OBJECT_NAME
+------------------- --------------------------------------------------------------------------------------------------------------------------------
+PROCEDURE	    COLLECTION_REPLICAS_UPDATES
+TRIGGER 	    CHECK_DID_UNIQUENESS
+TRIGGER 	    MIGRATE_DELETED_DID
+TRIGGER 	    SCOPE_AVOID_UPDATE_DELETE
+TRIGGER 	    ACCOUNT_AVOID_UPDATE_DELETE
+
+*/
+
+
+
+
+
+-- Rucio DB functions and procedure definitions for Oracle RDBMS
 -- Authors: Rucio team and Gancho Dimitrov 
 
 
@@ -41,7 +60,7 @@ END;
 /
 
 --------------------------------------------------------------------------------------------------------------------------------
-
+/*
 GRANT EXECUTE on DBMS_CRYPTO to ATLAS_RUCIO; 
 
 
@@ -63,6 +82,7 @@ BEGIN
 END;
 /
 
+*/
 
 -- =========================================================================================
 -- ==============================  Procedures  =============================================
@@ -71,7 +91,7 @@ END;
 
 -- PLSQL procedure for adding new LIST partition to any relevant Rucio table (the LOGGING_TABPARTITIONS table must exist beforehand) 
 -- Use of DBMS_ASSERT for validation of the input. Sanitise the input by replacing the dots and dashes into the SCOPE names by underscore for the partition names to be Oracle friendly.
-
+/*
 CREATE OR REPLACE PROCEDURE ADD_NEW_PARTITION( m_tabname VARCHAR2, m_partition_name VARCHAR2) 
 AS
 	-- PRAGMA AUTONOMOUS_TRANSACTION;
@@ -114,13 +134,13 @@ BEGIN
 COMMIT;
 END;
 /
-
+*/
 
 
 
 -------------------------------------------------------------------------------------------------------------------------------------------------
 
-
+/*
 
 CREATE OR REPLACE PROCEDURE ABACUS_ACCOUNT AS
    type array_raw is table of RAW(16) index by binary_integer;
@@ -146,9 +166,9 @@ BEGIN
        COMMIT;
 END;
 /
-
+*/
 -------------------------------------------------------------------------------------------------------------------------------------------------
-
+/*
 
 CREATE OR REPLACE PROCEDURE ABACUS_RSE AS 
     type array_raw is table of RAW(16) index by binary_integer;
@@ -171,7 +191,7 @@ BEGIN
 END;
 /
 
-
+*/
 
 -------------------------------------------------------------------------------------------------------------------------------------------------
 
@@ -376,327 +396,22 @@ END;
 
 -------------------------------------------------------------------------------------------------------------------------------------------------
 
-
+/*
 CREATE OR REPLACE PROCEDURE RUCIO_ACCOUNT_LOGICAL_BYTES 
-AS
-BEGIN
-
-  -- 4th Sept 2017, ver 1.3, reads from the DIDS table with parallelism 2
-  -- Procedure for computing the logical bytes (based on the catalog only, not on the real file replicas on the Grid) based on the information in the DIDS table
-
-  -- Special condition in the FOR query to get only the SCOPEs that have not been computed within the same day. This is for case when the job fails for some reason and is re-started again
-    FOR i IN ( SELECT scope FROM scopes WHERE scope not like 'mock%' AND scope NOT IN (SELECT DISTINCT curr_scope FROM RUCIO_ACCOUNTING_LOGICAL_BYTES where CURRTIME > TRUNC(sysdate) ) ORDER BY scope ) LOOP
-
-      INSERT INTO RUCIO_ACCOUNTING_LOGICAL_BYTES
-	(
-	CURR_SCOPE,
-	COMMON_SCOPE,
-	STREAM_NAME,
-	DATATYPE,
-	HIDDEN,
-	ACCOUNT,
-	PROVENANCE,
-	CAMPAIGN,
-	PHYS_GROUP,
-	PROD_STEP,
-	GROUP_CNT,
-	BYTES
-	)
-      SELECT /*+ FULL(d) PARALLEL(d 2) NO_INDEX_RS(d DIDS_PK) NO_INDEX_FFS(d DIDS_PK) */
-            d.SCOPE,
-            CASE
-              WHEN d.scope LIKE 'user%'
-              THEN 'user'
-              WHEN d.scope LIKE 'group%'
-              THEN 'group'
-              WHEN project IS NULL
-              THEN NVL(d.scope, 'other')
-              ELSE NVL(d.project, 'other')
-             END AS common_scope,
-            NVL(d.stream_name, 'other'),
-            NVL(d.datatype, 'other'),
-            NVL(d.hidden, 0),
-            NVL(d.account, 'other'),
-            NVL(d.provenance, 'other'),
-            NVL(d.campaign, 'other'),
-            NVL(d.phys_group, 'other'),
-            NVL(d.prod_step, 'other'),
-            COUNT(1),
-            SUM(d.bytes)
-          FROM DIDS d
-          WHERE d.DID_TYPE = 'F' AND d.availability!='L' AND d.SCOPE = i.scope
-          GROUP BY
-	    d.SCOPE,
-            CASE
-              WHEN d.scope LIKE 'user%'
-              THEN 'user'
-              WHEN d.scope LIKE 'group%'
-              THEN 'group'
-              WHEN project IS NULL
-              THEN NVL(d.scope, 'other')
-              ELSE NVL(d.project, 'other')
-            END,
-            d.stream_name,
-            d.datatype,
-            d.hidden,
-            d.account,
-            d.provenance,
-            d.campaign,
-            d.phys_group,
-            d.prod_step
-          ;
-
-        COMMIT;
-
-    END LOOP;
-
-    EXCEPTION
-      WHEN NO_DATA_FOUND THEN
-          NULL;
-      WHEN OTHERS THEN
-          RAISE;
-END;
-/
+*/
 
 
 -------------------------------------------------------------------------------------------------------------------------------------------------
 
 
-CREATE OR REPLACE PROCEDURE RUCIO_ACCOUNTING_ALL_SCOPES 
-AS
-  curr_time DATE;
-  to_delete CHAR(1);
-  num_null_currtime NUMBER(10);
-BEGIN
-
--- 28th May 2018, version 1.6, added check for the number or rows when the CURRTIME is null
--- 10th Oct 2017, version 1.5, The CURRTIME is populated only at the end of the work because of the Monit Flume JDBC sorce  
--- Direct select - insert instead of passing data via collection.
--- Added 3 more metrics (columns to the RUCIO_ACCOUNTING_TAB and HIST tables) on which is based the computation TIER, SPACETOKEN, GRP_DATATYPE
-
-
--- In order to keep the history of the computations
--- Check whether there is already data from the same date. If there are, then to_delete = 'N'
-
- to_delete :='Y';
- num_null_currtime := 0;
- 
- SELECT  UNIQUE (case when ( TRUNC(currtime) = TRUNC(sysdate) ) then 'N'  else 'Y' end) INTO to_delete FROM RUCIO_ACCOUNTING_TAB;
- -- 28th May 2018: necessary for situations when the FOR loop did not finish for all scopes and partial information has left into the RUCIO_ACCOUNTING_TAB table 
- select count(*) INTO num_null_currtime from RUCIO_ACCOUNTING_TAB where currtime is null;
-
- 
- IF to_delete = 'Y' THEN
-    
-    IF num_null_currtime = 0 THEN 
-    	INSERT /*+ append */ INTO RUCIO_ACCOUNTING_HIST_TAB
-        SELECT * FROM RUCIO_ACCOUNTING_TAB;
-    END IF;
-    
- 	DELETE FROM RUCIO_ACCOUNTING_TAB;
-	COMMIT;
- END IF;
-
-
--- Because the job that calls this proc is RESTARTABLE in case of error, the query in the FOR clause is as the following :
-FOR i IN ( SELECT scope FROM scopes WHERE scope NOT LIKE 'mock%' AND scope NOT IN (SELECT distinct curr_scope FROM RUCIO_ACCOUNTING_TAB) ORDER BY scope ) LOOP
-
-     --   curr_time := sysdate; -- single current time for each computed scope
-
-	INSERT INTO RUCIO_ACCOUNTING_TAB
-    ( RSE,
-    SCOPE,
-    STREAM_NAME,
-    DATATYPE,
-    TOMBSTONE,
-    HIDDEN,
-    ACCOUNT,
-    PROVENANCE,
-    CAMPAIGN,
-    PHYS_GROUP,
-    PROD_STEP,
-    GROUP_CNT,
-    BYTES,
-    CURR_SCOPE,
-    TIER,
-    SPACETOKEN,
-    GRP_DATATYPE,
-    SITE)
-        SELECT  /*+ FULL(d) FULL(r) PARALLEL(d 2) PARALLEL(r 2) NO_INDEX_RS(d DIDS_PK) NO_INDEX_FFS(d DIDS_PK) */
-	-- curr_time,
-        rs.rse,
-        CASE WHEN d.scope LIKE 'user%' THEN 'user'
-           WHEN d.scope LIKE 'group%' THEN 'group'
-           WHEN project IS NULL THEN NVL(d.scope, 'other')
-           ELSE NVL(d.project, 'other') END as scope,
-        NVL(d.stream_name, 'other'),
-        NVL(d.datatype, 'other'),
-        CASE WHEN tombstone IS NOT NULL AND tombstone < sysdate AND NVL(lock_cnt, 0) = 0 THEN 'secondary'
-           WHEN (tombstone IS NULL OR tombstone>sysdate) AND rs.rse_type='TAPE' THEN 'custodial'
-           WHEN (tombstone IS NULL OR tombstone>sysdate) THEN 'primary'
-           ELSE 'other' END tombstone,
-        NVL(d.hidden, 0),
-        NVL(d.account, 'other'),
-        NVL(d.provenance, 'other'),
-        NVL(d.campaign, 'other'),
-        NVL(d.phys_group, 'other'),
-        NVL(d.prod_step, 'other'),
-        COUNT(1),
-        SUM(r.bytes),
-        d.scope,
-	NULL, /* temporary NULL for the TIER column. After the loop it will be computed */
---      rmap.value as tier,
-        regexp_substr(rs.rse, '[^_]+$', 1, 1) as spacetoken,
-        regexp_replace(d.datatype, '_[^_]+$', '', 1, 1) as grp_datatype ,
-	NULL /* temporary NULL for the SITE column. After the loop it will be computed */
-        FROM DIDS d,
-           REPLICAS r,
-           RSES rs
---         ADG_ONLY_RSES_ATTR_MAP rmap
-        WHERE
-        d.DID_TYPE = 'F'
-	AND d.scope = i.scope
-        AND r.scope = i.scope
-        AND d.name = r.name
-        AND r.state = 'A'
-        AND rs.id = r.rse_id
-        AND rs.deleted != 1
---      AND rmap.rse_id=r.rse_id
---      AND rmap.key='tier'
-        GROUP BY sysdate, rs.rse,
-            CASE WHEN d.scope LIKE 'user%' THEN 'user'
-                WHEN d.scope LIKE 'group%' THEN 'group'
-                WHEN project IS NULL THEN NVL(d.scope, 'other')
-            ELSE NVL(d.project, 'other') END,
-            d.stream_name, d.datatype,
-            CASE WHEN tombstone IS NOT NULL AND tombstone < sysdate AND NVL(lock_cnt, 0) = 0 THEN 'secondary'
-               WHEN (tombstone IS NULL OR tombstone>sysdate) AND rs.rse_type='TAPE' THEN 'custodial'
-               WHEN (tombstone IS NULL OR tombstone>sysdate) THEN 'primary'
-               ELSE 'other' END,
-            d.hidden,
-            d.account,
-            d.provenance,
-            d.campaign,
-            d.phys_group,
-            d.prod_step,
-            d.scope ;
---            rmap.value,
---            regexp_substr(rs.rse, '[^_]+$', 1, 1),
---            regexp_replace(d.datatype, '_[^_]+$', '', 1, 1);
-
-         COMMIT;
-
-    END LOOP;
-
-   
-    curr_time := sysdate; -- single current time for each computed scope
-
-    /* 10th Oct 2017: 
-    The IT Monit Flume JDBCsource queries every hour and gets any new records from the table (based on the currtime column). 
-    That is why this column has to be populated at the end. If the currtime is updated in the LOOP, the TIER and SITE values are missed by Flume. 
-    */
-
-	-- Update the TIER and SITE columns with the real Tier and Site value from the RSE_ATTR_MAP table
-	UPDATE RUCIO_ACCOUNTING_TAB tab
-	set 
-    CURRTIME = curr_time, 
-    TIER = (select m.value from RSE_ATTR_MAP m, RSES r where m.rse_id=r.id AND r.rse = tab.rse AND m.key='tier'),
-	SITE = (select m.value from RSE_ATTR_MAP m, RSES r where m.rse_id=r.id AND r.rse = tab.rse AND m.key='site');
-	COMMIT;
-
-    EXCEPTION
-      WHEN NO_DATA_FOUND THEN
-          NULL;
-      WHEN OTHERS THEN
-          RAISE;
-
-END;
-/
-
-
-
-
--------------------------------------------------------------------------------------------------------------------------------------------------
-
-
-
+/*
 CREATE OR REPLACE PROCEDURE ESTIMATE_TRANSFER_TIME 
-AS
-BEGIN
-
-   /* 28th Sept 2017, Ver 1.0 , procedure estimating the files transfer time from source to destination on the Grid */
-   /* Note: the UPDATEs of about 500K-600K are done within standalone transactions in order to avoid rows lock for long time (minutes) */
-
-   FOR req IN
-   (
-      SELECT
-           scope,
-           name,
-           source_rse_id,
-           dest_rse_id,
-               CASE
-                   WHEN NVL(transfer_speed, 0)!=0
-                   THEN sys_extract_utc(systimestamp) + numtodsinterval((SUM(bytes) OVER (partition BY src_site, dest_site ORDER BY src_site, dest_site, created_at rows BETWEEN unbounded preceding AND CURRENT row))/transfer_speed/1000000, 'second')
-                   ELSE NULL
-               END AS estimated_at
-         FROM
-           (
-               SELECT
-			/* the ORDERED hint is important as this instructs the CBO to perform the HASH join in the order the tables appear in the FROM clause */
-			/*+ ORDERED FULL(a) INDEX_FFS(b DISTANCES_PK) INDEX_FFS(src RSE_ATTR_MAP_PK) INDEX_FFS(dest RSE_ATTR_MAP_PK)*/
-                   scope,
-                   name,
-                   bytes,
-                   a.created_at,
-                   finished,
-                   a.source_rse_id,
-                   src.value AS src_site,
-                   a.dest_rse_id,
-                   dest.value AS dest_site,
-                   transfer_speed
-               FROM
-                   distances b,
-                   requests a,
-                   rse_attr_map src,
-                   rse_attr_map dest
-               WHERE
-                   state='S'
-               AND a.source_rse_id=b.src_rse_id
-               AND a.dest_rse_id=b.dest_rse_id
-               AND a.source_rse_id=src.rse_id
-               AND src.key='site'
-               AND a.dest_rse_id=dest.rse_id
-               AND dest.key='site'
-	)
-	-- ORDER BY scope, name
-)
-   LOOP
-       UPDATE
-           requests
-       SET
-           estimated_at=req.estimated_at
-       WHERE
-           scope=req.scope
-       AND name=req.name
-       AND source_rse_id=req.source_rse_id
-       AND dest_rse_id=req.dest_rse_id
-       AND estimated_at IS NULL;
-
-	COMMIT;
-
-END LOOP;
-
-END;
-/
-
-
-
+*/
 
 -------------------------------------------------------------------------------------------------------------------------------------------------
 
 
-CREATE OR REPLACE PROCEDURE COLL_UPDATED_REPLICAS (virt_scope_gr VARCHAR2)
-AS
+PROCEDURE		   "COLLECTION_REPLICAS_UPDATES" AS
     type array_raw is table of RAW(16) index by binary_integer;
     type array_scope is table of VARCHAR2(30) index by binary_integer;
     type array_name  is table of VARCHAR2(255) index by binary_integer;
@@ -714,80 +429,55 @@ AS
     ds_replica_state          VARCHAR2(1);
     row_exists                NUMBER;
 
-
-	CURSOR get_upd_col_rep
-	IS
-	SELECT id, scope, name, rse_id
-	FROM updated_col_rep
-	WHERE virt_scope_group = virt_scope_gr
-	ORDER BY scope, name;
-
+    CURSOR get_upd_col_rep IS SELECT id, scope, name, rse_id FROM CMS_RUCIO_PROD.updated_col_rep;
 BEGIN
+    -- Delete duplicates
+    DELETE FROM CMS_RUCIO_PROD.UPDATED_COL_REP A WHERE A.rowid > ANY (SELECT B.rowid FROM CMS_RUCIO_PROD.UPDATED_COL_REP B WHERE A.scope = B.scope AND A.name=B.name AND A.did_type=B.did_type AND (A.rse_id=B.rse_id OR (A.rse_id IS NULL and B.rse_id IS NULL)));
+    -- Delete Update requests which do not have Collection_replicas
+    DELETE FROM CMS_RUCIO_PROD.UPDATED_COL_REP A WHERE A.rse_id IS NOT NULL AND NOT EXISTS(SELECT * FROM CMS_RUCIO_PROD.COLLECTION_REPLICAS B WHERE B.scope = A.scope AND B.name = A.name  AND B.rse_id = A.rse_id);
+    DELETE FROM CMS_RUCIO_PROD.UPDATED_COL_REP A WHERE A.rse_id IS NULL AND NOT EXISTS(SELECT * FROM CMS_RUCIO_PROD.COLLECTION_REPLICAS B WHERE B.scope = A.scope AND B.name = A.name);
+    COMMIT;
 
-	/* 22nd March 2018 , ver 1.0 */
-	-- Within the requested virt_scope_gr delete the unnecessary rows
-	-- Delete requests which do not have Collection_replicas
-	DELETE FROM UPDATED_COL_REP A
-	WHERE
-	virt_scope_group = virt_scope_gr
-	AND
-	(
-	A.rse_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM COLLECTION_REPLICAS B WHERE B.scope = A.scope AND B.name = A.name  AND B.rse_id = A.rse_id)
-	)
-	OR
-	(
-	A.rse_id IS NULL AND NOT EXISTS(SELECT 1 FROM COLLECTION_REPLICAS B WHERE B.scope = A.scope AND B.name = A.name)
-	);
-
-     -- Delete duplicates
-    DELETE FROM UPDATED_COL_REP A
-	WHERE
-	virt_scope_group = virt_scope_gr
-	AND
-	A.rowid > ANY (SELECT B.rowid FROM updated_col_rep B WHERE A.scope = B.scope AND A.name=B.name AND A.did_type=B.did_type AND (A.rse_id=B.rse_id OR (A.rse_id IS NULL and B.rse_id IS NULL)));
-
-	COMMIT;
-
-    -- Execute the query
     OPEN get_upd_col_rep;
     LOOP
-        FETCH get_upd_col_rep BULK COLLECT INTO ids, scopes, names, rse_ids LIMIT 50000;
+        FETCH get_upd_col_rep BULK COLLECT INTO ids, scopes, names, rse_ids LIMIT 5000;
         FOR i IN 1 .. rse_ids.count
         LOOP
-            DELETE FROM updated_col_rep WHERE id = ids(i);
+            DELETE FROM CMS_RUCIO_PROD.updated_col_rep WHERE id = ids(i);
             IF rse_ids(i) IS NOT NULL THEN
                 -- Check one specific DATASET_REPLICA
                 BEGIN
-                    SELECT length, bytes, available_replicas_cnt INTO ds_length, ds_bytes, old_available_replicas FROM collection_replicas WHERE scope=scopes(i) and name=names(i) and rse_id=rse_ids(i);
+                    SELECT length, bytes, available_replicas_cnt INTO ds_length, ds_bytes, old_available_replicas FROM CMS_RUCIO_PROD.collection_replicas WHERE scope=scopes(i) and name=names(i) and rse_id=rse_ids(i);
                 EXCEPTION
                     WHEN NO_DATA_FOUND THEN CONTINUE;
                 END;
 
-                SELECT count(*), sum(r.bytes) INTO available_replicas, ds_available_bytes FROM replicas r, contents c WHERE r.scope = c.child_scope and r.name = c.child_name and c.scope = scopes(i) and c.name = names(i) and r.state='A' and r.rse_id=rse_ids(i);
+                SELECT count(*), sum(r.bytes) INTO available_replicas, ds_available_bytes FROM CMS_RUCIO_PROD.replicas r, CMS_RUCIO_PROD.contents c WHERE r.scope = c.child_scope and r.name = c.child_name and c.scope = scopes(i) and c.name = names(i) and r.state='A' and r.rse_id=rse_ids(i);
                 IF available_replicas >= ds_length THEN
                     ds_replica_state := 'A';
                 ELSE
                     ds_replica_state := 'U';
                 END IF;
+
                 IF old_available_replicas > 0 AND available_replicas = 0 THEN
-                    DELETE FROM COLLECTION_REPLICAS WHERE scope = scopes(i) and name = names(i) and rse_id = rse_ids(i);
+                    DELETE FROM CMS_RUCIO_PROD.COLLECTION_REPLICAS WHERE scope = scopes(i) and name = names(i) and rse_id = rse_ids(i);
                 ELSE
-                    UPDATE COLLECTION_REPLICAS
+                    UPDATE CMS_RUCIO_PROD.COLLECTION_REPLICAS
                     SET state=ds_replica_state, available_replicas_cnt=available_replicas, length=ds_length, bytes=ds_bytes, available_bytes=ds_available_bytes, updated_at=sys_extract_utc(systimestamp)
                     WHERE scope = scopes(i) and name = names(i) and rse_id = rse_ids(i);
                 END IF;
             ELSE
                 -- Check all DATASET_REPLICAS of this DS
-                SELECT count(*), SUM(bytes) INTO ds_length, ds_bytes FROM contents WHERE scope=scopes(i) and name=names(i);
-                UPDATE COLLECTION_REPLICAS SET length=nvl(ds_length,0), bytes=nvl(ds_bytes,0) WHERE scope = scopes(i) and name = names(i);
-                FOR rse IN (SELECT rse_id, count(*) as available_replicas, sum(r.bytes) as ds_available_bytes FROM replicas r, contents c WHERE r.scope = c.child_scope and r.name = c.child_name and c.scope = scopes(i) and c.name = names(i) and r.state='A' GROUP BY rse_id)
+                SELECT count(*), SUM(bytes) INTO ds_length, ds_bytes FROM CMS_RUCIO_PROD.contents WHERE scope=scopes(i) and name=names(i);
+                UPDATE CMS_RUCIO_PROD.COLLECTION_REPLICAS SET length=nvl(ds_length,0), bytes=nvl(ds_bytes,0) WHERE scope = scopes(i) and name = names(i);
+                FOR rse IN (SELECT rse_id, count(*) as available_replicas, sum(r.bytes) as ds_available_bytes FROM CMS_RUCIO_PROD.replicas r, CMS_RUCIO_PROD.contents c WHERE r.scope = c.child_scope and r.name = c.child_name and c.scope = scopes(i) and c.name = names(i) and r.state='A' GROUP BY rse_id)
                 LOOP
                     IF rse.available_replicas >= ds_length THEN
                         ds_replica_state := 'A';
                     ELSE
                         ds_replica_state := 'U';
                     END IF;
-                    UPDATE COLLECTION_REPLICAS
+                    UPDATE CMS_RUCIO_PROD.COLLECTION_REPLICAS
                     SET state=ds_replica_state, available_replicas_cnt=rse.available_replicas, available_bytes=rse.ds_available_bytes, updated_at=sys_extract_utc(systimestamp)
                     WHERE scope = scopes(i) and name = names(i) and rse_id = rse.rse_id;
                 END LOOP;
@@ -801,10 +491,117 @@ BEGIN
 END;
 /
 
+--CREATE OR REPLACE PROCEDURE COLL_UPDATED_REPLICAS (virt_scope_gr VARCHAR2)
+--AS
+--    type array_raw is table of RAW(16) index by binary_integer;
+--    type array_scope is table of VARCHAR2(30) index by binary_integer;
+--    type array_name  is table of VARCHAR2(255) index by binary_integer;
+--
+--    ids     array_raw;
+--    rse_ids array_raw;
+--    scopes  array_scope;
+--    names   array_name;
+--
+--    ds_length                 NUMBER(19);
+--    ds_bytes                  NUMBER(19);
+--    available_replicas        NUMBER(19);
+--    old_available_replicas    NUMBER(19);
+--    ds_available_bytes        NUMBER(19);
+--    ds_replica_state          VARCHAR2(1);
+--    row_exists                NUMBER;
+--
+--
+--	CURSOR get_upd_col_rep
+--	IS
+--	SELECT id, scope, name, rse_id
+--	FROM updated_col_rep
+--	WHERE virt_scope_group = virt_scope_gr
+--	ORDER BY scope, name;
+--
+--BEGIN
+--
+--	/* 22nd March 2018 , ver 1.0 */
+--	-- Within the requested virt_scope_gr delete the unnecessary rows
+--	-- Delete requests which do not have Collection_replicas
+--	DELETE FROM UPDATED_COL_REP A
+--	WHERE
+--	virt_scope_group = virt_scope_gr
+--	AND
+--	(
+--	A.rse_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM COLLECTION_REPLICAS B WHERE B.scope = A.scope AND B.name = A.name  AND B.rse_id = A.rse_id)
+--	)
+--	OR
+--	(
+--	A.rse_id IS NULL AND NOT EXISTS(SELECT 1 FROM COLLECTION_REPLICAS B WHERE B.scope = A.scope AND B.name = A.name)
+--	);
+--
+--     -- Delete duplicates
+--    DELETE FROM UPDATED_COL_REP A
+--	WHERE
+--	virt_scope_group = virt_scope_gr
+--	AND
+--	A.rowid > ANY (SELECT B.rowid FROM updated_col_rep B WHERE A.scope = B.scope AND A.name=B.name AND A.did_type=B.did_type AND (A.rse_id=B.rse_id OR (A.rse_id IS NULL and B.rse_id IS NULL)));
+--
+--	COMMIT;
+--
+--    -- Execute the query
+--    OPEN get_upd_col_rep;
+--    LOOP
+--        FETCH get_upd_col_rep BULK COLLECT INTO ids, scopes, names, rse_ids LIMIT 50000;
+--        FOR i IN 1 .. rse_ids.count
+--        LOOP
+--            DELETE FROM updated_col_rep WHERE id = ids(i);
+--            IF rse_ids(i) IS NOT NULL THEN
+--                -- Check one specific DATASET_REPLICA
+--                BEGIN
+--                    SELECT length, bytes, available_replicas_cnt INTO ds_length, ds_bytes, old_available_replicas FROM collection_replicas WHERE scope=scopes(i) and name=names(i) and rse_id=rse_ids(i);
+--                EXCEPTION
+--                    WHEN NO_DATA_FOUND THEN CONTINUE;
+--                END;
+--
+--                SELECT count(*), sum(r.bytes) INTO available_replicas, ds_available_bytes FROM replicas r, contents c WHERE r.scope = c.child_scope and r.name = c.child_name and c.scope = scopes(i) and c.name = names(i) and r.state='A' and r.rse_id=rse_ids(i);
+--                IF available_replicas >= ds_length THEN
+--                    ds_replica_state := 'A';
+--                ELSE
+--                    ds_replica_state := 'U';
+--                END IF;
+--                IF old_available_replicas > 0 AND available_replicas = 0 THEN
+--                    DELETE FROM COLLECTION_REPLICAS WHERE scope = scopes(i) and name = names(i) and rse_id = rse_ids(i);
+--                ELSE
+--                    UPDATE COLLECTION_REPLICAS
+--                    SET state=ds_replica_state, available_replicas_cnt=available_replicas, length=ds_length, bytes=ds_bytes, available_bytes=ds_available_bytes, updated_at=sys_extract_utc(systimestamp)
+--                    WHERE scope = scopes(i) and name = names(i) and rse_id = rse_ids(i);
+--                END IF;
+--            ELSE
+--                -- Check all DATASET_REPLICAS of this DS
+--                SELECT count(*), SUM(bytes) INTO ds_length, ds_bytes FROM contents WHERE scope=scopes(i) and name=names(i);
+--                UPDATE COLLECTION_REPLICAS SET length=nvl(ds_length,0), bytes=nvl(ds_bytes,0) WHERE scope = scopes(i) and name = names(i);
+--                FOR rse IN (SELECT rse_id, count(*) as available_replicas, sum(r.bytes) as ds_available_bytes FROM replicas r, contents c WHERE r.scope = c.child_scope and r.name = c.child_name and c.scope = scopes(i) and c.name = names(i) and r.state='A' GROUP BY rse_id)
+--                LOOP
+--                    IF rse.available_replicas >= ds_length THEN
+--                        ds_replica_state := 'A';
+--                    ELSE
+--                        ds_replica_state := 'U';
+--                    END IF;
+--                    UPDATE COLLECTION_REPLICAS
+--                    SET state=ds_replica_state, available_replicas_cnt=rse.available_replicas, available_bytes=rse.ds_available_bytes, updated_at=sys_extract_utc(systimestamp)
+--                    WHERE scope = scopes(i) and name = names(i) and rse_id = rse.rse_id;
+--                END LOOP;
+--            END IF;
+--            COMMIT;
+--        END LOOP;
+--        EXIT WHEN get_upd_col_rep%NOTFOUND;
+--    END LOOP;
+--    CLOSE get_upd_col_rep;
+--    COMMIT;
+--END;
+--/
+--
 
 
 -------------------------------------------------------------------------------------------------------------------------------------------------
 
+/*
 
 CREATE OR REPLACE PROCEDURE COLL_UPDATED_REPLICAS_ORAHASH (virt_scope_gr VARCHAR2, num_splitters NUMBER DEFAULT 0, portion_id NUMBER DEFAULT 0)
 AS
@@ -837,9 +634,9 @@ AS
 
 BEGIN
 
-	/* 4nd April 2018, ver 1.0 */
+	--4nd April 2018, ver 1.0
 
-	/* Within the requested virt_scope_gr and data portion based to the num_splitters and the result from ORA_HASH(name, num_splitters ) = portion_id, delete the unnecessary rows */
+	--Within the requested virt_scope_gr and data portion based to the num_splitters and the result from ORA_HASH(name, num_splitters ) = portion_id, delete the unnecessary rows
 	-- Delete requests which do not have Collection_replicas
 	DELETE FROM UPDATED_COL_REP A
 	WHERE
@@ -918,7 +715,7 @@ BEGIN
 END;
 /
 
-
+*/
 
 -------------------------------------------------------------------------------------------------------------------------------------------------
 

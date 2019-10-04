@@ -7,7 +7,7 @@
 -- trigger which fires on AFTER INSERT event on the SCOPES table and is responsible for creation of LIST partitions in all
 -- relevant Rucio tables (as total 5 LIST partitioned tables)
 
-
+/*
 
 CREATE OR REPLACE TRIGGER CREATE_LIST_PARTITIONS 
 AFTER INSERT on SCOPES
@@ -27,7 +27,7 @@ END;
 /
 
 
-
+*/
 
 -- 2) =================================================================================================================
 -- auxiliary trigger for enforcing a constraint
