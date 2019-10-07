@@ -61,7 +61,7 @@ END;
 
 --------------------------------------------------------------------------------------------------------------------------------
 /*
-GRANT EXECUTE on DBMS_CRYPTO to ATLAS_RUCIO; 
+GRANT EXECUTE on DBMS_CRYPTO to CMS_RUCIO_DEV_ADMIN; 
 
 
 CREATE OR REPLACE FUNCTION LFN2PATH(scope varchar2, name varchar2) 
@@ -411,7 +411,7 @@ CREATE OR REPLACE PROCEDURE ESTIMATE_TRANSFER_TIME
 -------------------------------------------------------------------------------------------------------------------------------------------------
 
 
-PROCEDURE		   "COLLECTION_REPLICAS_UPDATES" AS
+CREATE OR REPLACE PROCEDURE "COLL_REPLICAS_UPDATE_ALL" AS
     type array_raw is table of RAW(16) index by binary_integer;
     type array_scope is table of VARCHAR2(30) index by binary_integer;
     type array_name  is table of VARCHAR2(255) index by binary_integer;
@@ -429,13 +429,18 @@ PROCEDURE		   "COLLECTION_REPLICAS_UPDATES" AS
     ds_replica_state          VARCHAR2(1);
     row_exists                NUMBER;
 
-    CURSOR get_upd_col_rep IS SELECT id, scope, name, rse_id FROM CMS_RUCIO_PROD.updated_col_rep;
+
+      CURSOR get_upd_col_rep
+      IS
+      SELECT id, scope, name, rse_id
+      FROM updated_col_rep;
+
 BEGIN
     -- Delete duplicates
-    DELETE FROM CMS_RUCIO_PROD.UPDATED_COL_REP A WHERE A.rowid > ANY (SELECT B.rowid FROM CMS_RUCIO_PROD.UPDATED_COL_REP B WHERE A.scope = B.scope AND A.name=B.name AND A.did_type=B.did_type AND (A.rse_id=B.rse_id OR (A.rse_id IS NULL and B.rse_id IS NULL)));
+    DELETE FROM UPDATED_COL_REP A WHERE A.rowid > ANY (SELECT B.rowid FROM UPDATED_COL_REP B WHERE A.scope = B.scope AND A.name=B.name AND A.did_type=B.did_type AND (A.rse_id=B.rse_id OR (A.rse_id IS NULL and B.rse_id IS NULL)));
     -- Delete Update requests which do not have Collection_replicas
-    DELETE FROM CMS_RUCIO_PROD.UPDATED_COL_REP A WHERE A.rse_id IS NOT NULL AND NOT EXISTS(SELECT * FROM CMS_RUCIO_PROD.COLLECTION_REPLICAS B WHERE B.scope = A.scope AND B.name = A.name  AND B.rse_id = A.rse_id);
-    DELETE FROM CMS_RUCIO_PROD.UPDATED_COL_REP A WHERE A.rse_id IS NULL AND NOT EXISTS(SELECT * FROM CMS_RUCIO_PROD.COLLECTION_REPLICAS B WHERE B.scope = A.scope AND B.name = A.name);
+    DELETE FROM UPDATED_COL_REP A WHERE A.rse_id IS NOT NULL AND NOT EXISTS(SELECT * FROM COLLECTION_REPLICAS B WHERE B.scope = A.scope AND B.name = A.name  AND B.rse_id = A.rse_id);
+    DELETE FROM UPDATED_COL_REP A WHERE A.rse_id IS NULL AND NOT EXISTS(SELECT * FROM COLLECTION_REPLICAS B WHERE B.scope = A.scope AND B.name = A.name);
     COMMIT;
 
     OPEN get_upd_col_rep;
@@ -443,41 +448,40 @@ BEGIN
         FETCH get_upd_col_rep BULK COLLECT INTO ids, scopes, names, rse_ids LIMIT 5000;
         FOR i IN 1 .. rse_ids.count
         LOOP
-            DELETE FROM CMS_RUCIO_PROD.updated_col_rep WHERE id = ids(i);
+            DELETE FROM updated_col_rep WHERE id = ids(i);
             IF rse_ids(i) IS NOT NULL THEN
                 -- Check one specific DATASET_REPLICA
                 BEGIN
-                    SELECT length, bytes, available_replicas_cnt INTO ds_length, ds_bytes, old_available_replicas FROM CMS_RUCIO_PROD.collection_replicas WHERE scope=scopes(i) and name=names(i) and rse_id=rse_ids(i);
+                    SELECT length, bytes, available_replicas_cnt INTO ds_length, ds_bytes, old_available_replicas FROM collection_replicas WHERE scope=scopes(i) and name=names(i) and rse_id=rse_ids(i);
                 EXCEPTION
                     WHEN NO_DATA_FOUND THEN CONTINUE;
                 END;
 
-                SELECT count(*), sum(r.bytes) INTO available_replicas, ds_available_bytes FROM CMS_RUCIO_PROD.replicas r, CMS_RUCIO_PROD.contents c WHERE r.scope = c.child_scope and r.name = c.child_name and c.scope = scopes(i) and c.name = names(i) and r.state='A' and r.rse_id=rse_ids(i);
+                SELECT count(*), sum(r.bytes) INTO available_replicas, ds_available_bytes FROM replicas r, contents c WHERE r.scope = c.child_scope and r.name = c.child_name and c.scope = scopes(i) and c.name = names(i) and r.state='A' and r.rse_id=rse_ids(i);
                 IF available_replicas >= ds_length THEN
                     ds_replica_state := 'A';
                 ELSE
                     ds_replica_state := 'U';
                 END IF;
-
                 IF old_available_replicas > 0 AND available_replicas = 0 THEN
-                    DELETE FROM CMS_RUCIO_PROD.COLLECTION_REPLICAS WHERE scope = scopes(i) and name = names(i) and rse_id = rse_ids(i);
+                    DELETE FROM COLLECTION_REPLICAS WHERE scope = scopes(i) and name = names(i) and rse_id = rse_ids(i);
                 ELSE
-                    UPDATE CMS_RUCIO_PROD.COLLECTION_REPLICAS
+                    UPDATE COLLECTION_REPLICAS
                     SET state=ds_replica_state, available_replicas_cnt=available_replicas, length=ds_length, bytes=ds_bytes, available_bytes=ds_available_bytes, updated_at=sys_extract_utc(systimestamp)
                     WHERE scope = scopes(i) and name = names(i) and rse_id = rse_ids(i);
                 END IF;
             ELSE
                 -- Check all DATASET_REPLICAS of this DS
-                SELECT count(*), SUM(bytes) INTO ds_length, ds_bytes FROM CMS_RUCIO_PROD.contents WHERE scope=scopes(i) and name=names(i);
-                UPDATE CMS_RUCIO_PROD.COLLECTION_REPLICAS SET length=nvl(ds_length,0), bytes=nvl(ds_bytes,0) WHERE scope = scopes(i) and name = names(i);
-                FOR rse IN (SELECT rse_id, count(*) as available_replicas, sum(r.bytes) as ds_available_bytes FROM CMS_RUCIO_PROD.replicas r, CMS_RUCIO_PROD.contents c WHERE r.scope = c.child_scope and r.name = c.child_name and c.scope = scopes(i) and c.name = names(i) and r.state='A' GROUP BY rse_id)
+                SELECT count(*), SUM(bytes) INTO ds_length, ds_bytes FROM contents WHERE scope=scopes(i) and name=names(i);
+                UPDATE COLLECTION_REPLICAS SET length=nvl(ds_length,0), bytes=nvl(ds_bytes,0) WHERE scope = scopes(i) and name = names(i);
+                FOR rse IN (SELECT rse_id, count(*) as available_replicas, sum(r.bytes) as ds_available_bytes FROM replicas r, contents c WHERE r.scope = c.child_scope and r.name = c.child_name and c.scope = scopes(i) and c.name = names(i) and r.state='A' GROUP BY rse_id)
                 LOOP
                     IF rse.available_replicas >= ds_length THEN
                         ds_replica_state := 'A';
                     ELSE
                         ds_replica_state := 'U';
                     END IF;
-                    UPDATE CMS_RUCIO_PROD.COLLECTION_REPLICAS
+                    UPDATE COLLECTION_REPLICAS
                     SET state=ds_replica_state, available_replicas_cnt=rse.available_replicas, available_bytes=rse.ds_available_bytes, updated_at=sys_extract_utc(systimestamp)
                     WHERE scope = scopes(i) and name = names(i) and rse_id = rse.rse_id;
                 END LOOP;
@@ -743,3 +747,6 @@ COMMIT;
 
 END;
 /
+
+
+--/

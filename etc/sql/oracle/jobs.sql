@@ -1,6 +1,17 @@
 -- Definitions of Rucio database scheduler jobs
 -- Authors: Rucio team and Gancho Dimitrov 
 
+
+/*
+ select  OWNER, JOB_NAME from all_scheduler_jobs where OWNER='CMS_RUCIO_DEV_ADMIN';
+
+OWNER			       JOB_NAME
+------------------------------ ------------------------------
+CMS_RUCIO_DEV_ADMIN	       COLLECTION_REPLICAS_UPDATES_JB
+
+*/
+
+
 /*
 Note: 
 the Rucio jobs have to run on the Rucio services defined on the DB cluster (in order to take advantage of the already cached data/index blocks on the relevant DB nodes). RUCIO_JOB_CLASS and RUCIO_JOB_CLASS_2 have to be predefined on the database and execute privilege has to be granted to the DB user before creating the Rucio DB scheduler jobs.  
