@@ -302,8 +302,8 @@ FOR j IN 1 .. coll_parts.COUNT LOOP
 		     	EXIT;
 		   EXCEPTION
     			WHEN resource_busy 
-			-- THEN DBMS_LOCK.sleep(1);
-			THEN DBMS_SESSION.sleep(1); -- from 12c onwards 
+			 THEN DBMS_LOCK.sleep(1);
+--			THEN DBMS_SESSION.sleep(1); -- from 12c onwards
 
 		   END;
 		END LOOP;
@@ -382,8 +382,8 @@ FOR j IN 1 .. coll_parts.COUNT LOOP
 		     	EXIT;
 		   EXCEPTION
     			WHEN resource_busy 
-			-- THEN DBMS_LOCK.sleep(1);
-			THEN DBMS_SESSION.sleep(1); -- from Oracle 12c onwards 
+			 THEN DBMS_LOCK.sleep(1);
+--			THEN DBMS_SESSION.sleep(1); -- from Oracle 12c onwards
 		   END;
 		END LOOP;
 	END IF;
