@@ -157,5 +157,22 @@ END;
 
 
 
+--- CMS version of the collection update job -----------------------------------------------------------------------------------------------------------
 
+exec dbms_scheduler.drop_job('COLL_REPL_UPDATED_JOB_CMS');
 
+BEGIN
+dbms_scheduler.create_job
+('COLL_REPL_UPDATED_JOB_CMS',
+job_type=>'STORED_PROCEDURE',
+job_action=> 'COLL_REPLICAS_UPDATE_ALL',
+number_of_arguments=>0,
+start_date=>TO_TIMESTAMP_TZ('22-MAR-2018 08.00.00 EUROPE/ZURICH','DD-MON-YYYY HH24:MI:SS TZR'),
+repeat_interval=> 'FREQ=MINUTELY; INTERVAL=2;',
+job_class=>'RUCIO_JOB_CLASS',
+enabled=>TRUE,
+auto_drop=>FALSE,
+comments=>'Every two minutes remove the duplicates from the UPDATED_COL_REP table for all scopes and update the COLLECTION_REPLICAS data'
+);
+END;
+/
