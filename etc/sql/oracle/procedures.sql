@@ -445,6 +445,7 @@ BEGIN
 
     OPEN get_upd_col_rep;
     LOOP
+        DBMS_OUTPUT.PUT_LINE("Getting 5k records");
         FETCH get_upd_col_rep BULK COLLECT INTO ids, scopes, names, rse_ids LIMIT 5000;
         FOR i IN 1 .. rse_ids.count
         LOOP
