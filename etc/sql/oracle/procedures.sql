@@ -1,4 +1,16 @@
 /*
+Eric V 9:29 AM
+UPDATE_RSE_USAGE_HISTORY, RUCIO_DATA_SLIDING_WINDOWS, RULES_HIST_SL_WINDOW, RUCIO_ACCOUNT_LOGICALBYTES_JOB, RUCIO_ACCOUNTING_ALLSCOPES_JOB, ESTIMATE_TRANSFER_TIME_JOB, RUCIO_ACCOUNT_USAGE_HIST_JOB
+
+Martin Barisits 9:31 AM
+RUCIO_ACCOUNT_LOGICALBYTES_JOB, RUCIO_ACCOUNTING_ALLSCOPES_JOB, ESTIMATE_TRANSFER_TIME_JOB
+You don’t need. The others are useful.
+*/
+
+
+
+
+/*
 Current procedures and triggers
 
 SQL> select object_type, object_name from user_procedures;
@@ -445,7 +457,7 @@ BEGIN
 
     OPEN get_upd_col_rep;
     LOOP
-        DBMS_OUTPUT.PUT_LINE("Getting 5k records");
+        DBMS_OUTPUT.PUT_LINE('Getting 5k records');
         FETCH get_upd_col_rep BULK COLLECT INTO ids, scopes, names, rse_ids LIMIT 5000;
         FOR i IN 1 .. rse_ids.count
         LOOP

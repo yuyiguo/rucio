@@ -1185,6 +1185,8 @@ CREATE INDEX REQ_HIST_SCOPE_NAME_RSE_IDX ON REQUESTS_HISTORY(SCOPE, NAME, DEST_R
 
 -- 40 ) =========================================  MESSAGES_HISTORY table ( RANGE INTERVAL partitioned ) ========================================= 
 
+-- CMS needs the partitioned version of this. Can Drop first table if needed and recreate
+
   CREATE TABLE MESSAGES_HISTORY 
    (	ID RAW(16), 
 	UPDATED_AT TIMESTAMP(6), 
