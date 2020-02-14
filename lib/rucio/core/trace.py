@@ -41,7 +41,7 @@ ERRLOG = logging.getLogger('errlog')
 ERRLOG.setLevel(logging.ERROR)
 
 LOGGER = logging.getLogger('trace')
-LOGGER.setLevel(logging.INFO)
+LOGGER.setLevel(logging.DEBUG)
 
 try:
     HANDLER = logging.handlers.RotatingFileHandler(filename='%s/trace' % config_get('trace', 'tracedir'), maxBytes=1000000000, backupCount=10)
@@ -99,7 +99,7 @@ def trace(payload):
 
     record_counter('trace.trace')
     report = json.dumps(payload, default=date_handler)
-    LOGGER.debug(report)
+    LOGGER.error(report)
 
     t_conns = CONNS[:]
 
