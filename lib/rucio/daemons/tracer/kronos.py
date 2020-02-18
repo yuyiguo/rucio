@@ -58,13 +58,10 @@ from rucio.core.replica import touch_replica, touch_collection_replicas, declare
 from rucio.core.rse import get_rse_id
 from rucio.db.sqla.constants import DIDType, BadFilesStatus
 
-logging.getLogger("stomp").setLevel(logging.CRITICAL)
+logging.getLogger("stomp").setLevel(logging.DEBUG)
 
 logging.basicConfig(stream=stdout,
-                    level=getattr(logging,
-                                  config_get('common', 'loglevel',
-                                             raise_exception=False,
-                                             default='DEBUG').upper()),
+                    level=getattr(logging,'DEBUG'),
                     format='%(asctime)s\t%(process)d\t%(levelname)s\t%(message)s')
 
 graceful_stop = Event()
@@ -100,7 +97,7 @@ class AMQConsumer(object):
 
         if 'resubmitted' in headers:
             record_counter('daemons.tracer.kronos.received_resubmitted')
-            logging.warning('(kronos_file) got a resubmitted report')
+            logging.info('(kronos_file on message) got a resubmitted report')
 
         try:
             if appversion == 'dq2':
@@ -120,7 +117,7 @@ class AMQConsumer(object):
         self.__reports.append(report)
 
         try:
-            logging.debug('(kronos_file) message received: %s %s %s' % (str(report['eventType']), report['filename'], report['remoteSite']))
+            logging.debug('(kronos_file on_messages ) message received: %s %s %s' % (str(report['eventType']), report['filename'], report['remoteSite']))
         except Exception:
             pass
 
@@ -277,7 +274,7 @@ def kronos_file(once=False, thread=0, brokers_resolved=None, dataset_queue=None,
     Main loop to consume tracer reports.
     """
 
-    logging.info('tracer consumer starting')
+    logging.info('(kronos_file) tracer consumer starting')
 
     hostname = socket.gethostname()
     pid = getpid()
@@ -336,6 +333,7 @@ def kronos_file(once=False, thread=0, brokers_resolved=None, dataset_queue=None,
         for conn in conns:
             if not conn.is_connected():
                 logging.info('(kronos_file) connecting to %s' % conn.transport._Transport__host_and_ports[0][0])
+                logging.info('starting debugging ... YYG')
                 record_counter('daemons.tracer.kronos.reconnect.%s' % conn.transport._Transport__host_and_ports[0][0].split('.')[0])
                 conn.set_listener('rucio-tracer-kronos', AMQConsumer(broker=conn.transport._Transport__host_and_ports[0],
                                                                      conn=conn,
@@ -346,8 +344,11 @@ def kronos_file(once=False, thread=0, brokers_resolved=None, dataset_queue=None,
                                                                      dataset_queue=dataset_queue,
                                                                      bad_files_patterns=bad_files_patterns))
                 conn.start()
+                logging.info("connection started... YYG")
                 if not use_ssl:
+                    logging.info("To be connected with pd ... YYG")
                     conn.connect(username, password)
+                    logging.info("connected with pd ... YYG")
                 else:
                     conn.connect()
                 conn.subscribe(destination=config_get('tracer-kronos', 'queue'), ack='client-individual', id=subscription_id, headers={'activemq.prefetchSize': prefetch_size})
@@ -395,6 +396,7 @@ def kronos_dataset(once=False, thread=0, dataset_queue=None, sleep_time=60):
 
 
 def __update_datasets(dataset_queue):
+    logging.info('(__update_dataset) starting') 
     len_ds = dataset_queue.qsize()
     datasets = {}
     dslocks = {}
@@ -416,7 +418,7 @@ def __update_datasets(dataset_queue):
             dslocks[did][rse] = dataset['accessed_at']
         else:
             dslocks[did][rse] = max(dataset['accessed_at'], dslocks[did][rse])
-    logging.debug('(kronos_dataset) fetched %d datasets from queue (%ds)' % (len_ds, time() - now))
+    logging.debug('(__update_dataset) fetched %d datasets from queue (%ds)' % (len_ds, time() - now))
 
     total, failed, start = 0, 0, time()
     for did, accessed_at in datasets.items():
@@ -429,7 +431,7 @@ def __update_datasets(dataset_queue):
             dataset_queue.put(update_did)
             failed += 1
         total += 1
-    logging.debug('(kronos_dataset) did update for %d datasets, %d failed (%ds)' % (total, failed, time() - start))
+    logging.debug('(__update_dataset) did update for %d datasets, %d failed (%ds)' % (total, failed, time() - start))
 
     total, failed, start = 0, 0, time()
     for did, rses in dslocks.items():
@@ -442,7 +444,7 @@ def __update_datasets(dataset_queue):
                 dataset_queue.put(update_dslock)
                 failed += 1
             total += 1
-    logging.debug('(kronos_dataset) did update for %d locks, %d failed (%ds)' % (total, failed, time() - start))
+    logging.debug('(__update_dataset) did update for %d locks, %d failed (%ds)' % (total, failed, time() - start))
 
     total, failed, start = 0, 0, time()
     for did, rses in dslocks.items():
@@ -455,7 +457,7 @@ def __update_datasets(dataset_queue):
                 dataset_queue.put(update_dslock)
                 failed += 1
             total += 1
-    logging.debug('(kronos_dataset) did update for %d collection replicas, %d failed (%ds)' % (total, failed, time() - start))
+    logging.debug('(__update_dataset) did update for %d collection replicas, %d failed (%ds)' % (total, failed, time() - start))
 
 
 def stop(signum=None, frame=None):
