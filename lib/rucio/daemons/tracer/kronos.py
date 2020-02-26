@@ -260,7 +260,7 @@ class AMQConsumer(object):
                     continue
                 for rse in rses:
                     rse_id = get_rse_id(rse=rse)
-                    logging.debug('(__upate_atime()) update __dataset_queue)
+                    logging.debug('(__upate_atime()) update __dataset_queue')
                     self.__dataset_queue.put({'scope': did['scope'], 'name': did['name'], 'did_type': did['type'], 'rse_id': rse_id, 'accessed_at': datetime.utcfromtimestamp(report['traceTimeentryUnix'])})
         logging.debug('checking replicas in __update_atime')
         logging.debug(replicas)
