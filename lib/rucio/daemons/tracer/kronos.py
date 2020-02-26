@@ -62,7 +62,7 @@ logging.getLogger("stomp").setLevel(logging.DEBUG)
 
 logging.basicConfig(stream=stdout,
                     level=getattr(logging,'DEBUG'),
-                    format='%(asctime)s\t%(process)d\t%(levelname)s\t%(message)s')
+                    format='%(asctime)s\t%(process)d\t%(levelname)s\t%(threadName)s\t%(message)s')
 
 graceful_stop = Event()
 
@@ -82,12 +82,14 @@ class AMQConsumer(object):
         self.__excluded_usrdns = excluded_usrdns
         self.__dataset_queue = dataset_queue
         self.__bad_files_patterns = bad_files_patterns
-
+        logging.debug('create a AMQConsumer... YYG')
+   
     def on_error(self, headers, message):
         record_counter('daemons.tracer.kronos.error')
         logging.error('[%s] %s' % (self.__broker, message))
 
     def on_message(self, headers, message):
+        logging.debug('on_messages ... YYG')
         record_counter('daemons.tracer.kronos.reports')
 
         appversion = 'dq2'
@@ -97,7 +99,7 @@ class AMQConsumer(object):
 
         if 'resubmitted' in headers:
             record_counter('daemons.tracer.kronos.received_resubmitted')
-            logging.info('(kronos_file on message) got a resubmitted report')
+            logging.debug('(kronos_file on message) got a resubmitted report')
 
         try:
             if appversion == 'dq2':
@@ -105,6 +107,7 @@ class AMQConsumer(object):
                 return
             else:
                 report = jloads(message)
+                logging.debug("message of on_messages: " + message )      
         except Exception:
             # message is corrupt, not much to do here
             # send count to graphite, send ack to broker and return
@@ -120,9 +123,12 @@ class AMQConsumer(object):
             logging.debug('(kronos_file on_messages ) message received: %s %s %s' % (str(report['eventType']), report['filename'], report['remoteSite']))
         except Exception:
             pass
-
+ 
+        logging.debug('(kronos_file on_messages ) chunksize: %d' %self.__chunksize)
         if len(self.__ids) >= self.__chunksize:
+            logging.debug('(kronos_file on_messages ) calling __upate_atime() ... YYG')
             self.__update_atime()
+            logging.debug('(kronos_file on_messages ) done calling_upate_atime() ... YYG')
             for msg_id in self.__ids:
                 self.__conn.ack(msg_id, self.__subscription_id)
 
@@ -133,6 +139,7 @@ class AMQConsumer(object):
         """
         Bulk update atime.
         """
+        logging.debug('(__upate_atime()) just got in  ... YYG')
         replicas = []
         rses = []
         for report in self.__reports:
@@ -215,8 +222,10 @@ class AMQConsumer(object):
                     rses = report['remoteSite'].strip().split(',')
                     for rse in rses:
                         rse_id = get_rse_id(rse=rse)
+                        logging.debug('(__upate_atime()) update replicas  .. YYG')
                         replicas.append({'name': report['filename'], 'scope': report['scope'], 'rse': rse, 'rse_id': rse_id, 'accessed_at': datetime.utcfromtimestamp(report['traceTimeentryUnix']),
                                          'traceTimeentryUnix': report['traceTimeentryUnix'], 'eventVersion': report['eventVersion']})
+                        logging.debug(replicas)
                 else:
                     # if touch event and if datasetScope is in the report then it means
                     # that there is no file scope/name and therefore only the dataset is
@@ -226,13 +235,17 @@ class AMQConsumer(object):
                     if 'remoteSite' in report:
                         rse = report['remoteSite']
                         rse_id = get_rse_id(rse=rse)
+                        logging.debug('(__upate_atime(), res_id %d'%res_id) 
                     if 'datasetScope' in report:
+                        logging.debug('(__upate_atime()) update __dataset_queue while datasetScope in report .. YYG')
                         self.__dataset_queue.put({'scope': report['datasetScope'], 'name': report['dataset'], 'rse_id': rse_id, 'accessed_at': datetime.utcfromtimestamp(report['traceTimeentryUnix'])})
                         continue
                     else:
                         if 'remoteSite' not in report:
                             continue
+                        logging.debug('(__upate_atime()) update replicas 2  .. YYG')
                         replicas.append({'name': report['filename'], 'scope': report['scope'], 'rse': rse, 'rse_id': rse_id, 'accessed_at': datetime.utcfromtimestamp(report['traceTimeentryUnix'])})
+                        logging.debug(replicas)
 
             except (KeyError, AttributeError):
                 logging.error(format_exc())
@@ -247,14 +260,16 @@ class AMQConsumer(object):
                     continue
                 for rse in rses:
                     rse_id = get_rse_id(rse=rse)
+                    logging.debug('(__upate_atime()) update __dataset_queue)
                     self.__dataset_queue.put({'scope': did['scope'], 'name': did['name'], 'did_type': did['type'], 'rse_id': rse_id, 'accessed_at': datetime.utcfromtimestamp(report['traceTimeentryUnix'])})
-
+        logging.debug('checking replicas in __update_atime')
         logging.debug(replicas)
 
         try:
             start_time = time()
             for replica in replicas:
                 # if touch replica hits a locked row put the trace back into queue for later retry
+                logging.debug('(__upate_atime()) update a replica for accessing time')
                 if not touch_replica(replica):
                     resubmit = {'filename': replica['name'], 'scope': replica['scope'].external, 'remoteSite': replica['rse'], 'traceTimeentryUnix': replica['traceTimeentryUnix'],
                                 'eventType': 'get', 'usrdn': 'someuser', 'clientState': 'DONE', 'eventVersion': replica['eventVersion']}
@@ -370,7 +385,7 @@ def kronos_file(once=False, thread=0, brokers_resolved=None, dataset_queue=None,
 
 
 def kronos_dataset(once=False, thread=0, dataset_queue=None, sleep_time=60):
-    logging.info('(kronos_dataset) starting')
+    logging.debug('(kronos_dataset) starting')
 
     hostname = socket.gethostname()
     pid = getpid()
@@ -383,6 +398,7 @@ def kronos_dataset(once=False, thread=0, dataset_queue=None, sleep_time=60):
         start_time = time()
         live(executable='kronos-dataset', hostname=hostname, pid=pid, thread=thread)
         if (datetime.now() - start).seconds > dataset_wait:
+            logging.debug('kronos_dataset: to be __update_dataset -- YYG ')
             __update_datasets(dataset_queue)
             start = datetime.now()
         tottime = time() - start_time
@@ -392,6 +408,7 @@ def kronos_dataset(once=False, thread=0, dataset_queue=None, sleep_time=60):
     # once again for the backlog
     die(executable='kronos-dataset', hostname=hostname, pid=pid, thread=thread)
     logging.info('(kronos_dataset) cleaning dataset backlog before shutdown...')
+    ogging.debug('kronos_dataset: to be __update_dataset 2 -- YYG ')
     __update_datasets(dataset_queue)
 
 
@@ -426,9 +443,11 @@ def __update_datasets(dataset_queue):
         scope = InternalScope(scope, fromExternal=False)
         update_did = {'scope': scope, 'name': name, 'type': DIDType.DATASET, 'accessed_at': accessed_at}
         # if update fails, put back in queue and retry next time
+        logging.debug('__update_datasets: to be touch_dids -- YYG')
         if not touch_dids((update_did,)):
             update_did['rse_id'] = None
             dataset_queue.put(update_did)
+            logging.debug('__update_datasets: failed touch_dids -- YYG')
             failed += 1
         total += 1
     logging.debug('(__update_dataset) did update for %d datasets, %d failed (%ds)' % (total, failed, time() - start))
@@ -453,9 +472,11 @@ def __update_datasets(dataset_queue):
         for rse, accessed_at in rses.items():
             update_dslock = {'scope': scope, 'name': name, 'rse_id': rse, 'accessed_at': accessed_at}
             # if update fails, put back in queue and retry next time
+            logging.debug('__update_datasets: to be touch_collection_replicas -- YYG')
             if not touch_collection_replicas((update_dslock,)):
                 dataset_queue.put(update_dslock)
                 failed += 1
+                logging.debug('__update_datasets: failed touch_collection_replicas -- YYG')
             total += 1
     logging.debug('(__update_dataset) did update for %d collection replicas, %d failed (%ds)' % (total, failed, time() - start))
 
@@ -480,7 +501,7 @@ def run(once=False, threads=1, sleep_time_datasets=60, sleep_time_files=60):
     except Exception:
         raise Exception('Could not load brokers from configuration')
 
-    logging.info('resolving broker dns alias: %s' % brokers_alias)
+    logging.debug('resolving broker dns alias: %s' % brokers_alias)
 
     brokers_resolved = []
     for broker in brokers_alias:
@@ -494,11 +515,11 @@ def run(once=False, threads=1, sleep_time_datasets=60, sleep_time_files=60):
 
     thread_list = []
     for thread in range(0, threads):
-        thread_list.append(Thread(target=kronos_file, kwargs={'thread': thread,
+        thread_list.append(Thread(name='kronos_file_thread', target=kronos_file, kwargs={'thread': thread,
                                                               'sleep_time': sleep_time_files,
                                                               'brokers_resolved': brokers_resolved,
                                                               'dataset_queue': dataset_queue}))
-        thread_list.append(Thread(target=kronos_dataset, kwargs={'thread': thread,
+        thread_list.append(Thread(name='kronos_dataset_thread', target=kronos_dataset, kwargs={'thread': thread,
                                                                  'sleep_time': sleep_time_datasets,
                                                                  'dataset_queue': dataset_queue}))
 
