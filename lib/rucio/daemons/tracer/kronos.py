@@ -392,11 +392,15 @@ def kronos_dataset(once=False, thread=0, dataset_queue=None, sleep_time=60):
     thread = current_thread()
 
     dataset_wait = config_get_int('tracer-kronos', 'dataset_wait')
+    logging.debug('(kronos_dataset) dataset_wait: %d '%dataset_wait)
     start = datetime.now()
+    logging.debug('(kronos_dataset) start: %s' %start)
     sanity_check(executable='kronos-dataset', hostname=hostname)
     while not graceful_stop.is_set():
         start_time = time()
         live(executable='kronos-dataset', hostname=hostname, pid=pid, thread=thread)
+        t = datetime.now()
+        logging.debug('(kronos_dataset) datetime.now() %s: ' %t)
         if (datetime.now() - start).seconds > dataset_wait:
             logging.debug('kronos_dataset: to be __update_dataset -- YYG ')
             __update_datasets(dataset_queue)
@@ -408,7 +412,7 @@ def kronos_dataset(once=False, thread=0, dataset_queue=None, sleep_time=60):
     # once again for the backlog
     die(executable='kronos-dataset', hostname=hostname, pid=pid, thread=thread)
     logging.info('(kronos_dataset) cleaning dataset backlog before shutdown...')
-    ogging.debug('kronos_dataset: to be __update_dataset 2 -- YYG ')
+    logging.debug('kronos_dataset: to be __update_dataset 2 -- YYG ')
     __update_datasets(dataset_queue)
 
 
