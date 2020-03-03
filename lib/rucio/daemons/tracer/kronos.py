@@ -385,13 +385,14 @@ def kronos_file(once=False, thread=0, brokers_resolved=None, dataset_queue=None,
 
 
 def kronos_dataset(once=False, thread=0, dataset_queue=None, sleep_time=60):
-    logging.debug('(kronos_dataset) starting')
+    logging.debug('(kronos_dataset) just starting YYG')
 
     hostname = socket.gethostname()
     pid = getpid()
     thread = current_thread()
 
     dataset_wait = config_get_int('tracer-kronos', 'dataset_wait')
+    logging.debug('(kronos_dataset) starting2')
     logging.debug('(kronos_dataset) dataset_wait: %d '%dataset_wait)
     start = datetime.now()
     logging.debug('(kronos_dataset) start: %s' %start)
@@ -417,19 +418,23 @@ def kronos_dataset(once=False, thread=0, dataset_queue=None, sleep_time=60):
 
 
 def __update_datasets(dataset_queue):
-    logging.info('(__update_dataset) starting') 
+    logging.info('(__update_dataset) starting YYG') 
     len_ds = dataset_queue.qsize()
+    logging.debug('(__update_datasets) dataset_queue.qsize() : %d'%len_ds)
     datasets = {}
     dslocks = {}
     now = time()
     for _ in range(0, len_ds):
         dataset = dataset_queue.get()
-        did = '%s:%s' % (dataset['scope'].internal, dataset['name'])
+        did = '%s:%s' % (dataset['scope'].internal, dataset['name']a
+        logging.debug('(__update_datasets) did: %s '%did)
         rse = dataset['rse_id']
         if did not in datasets:
             datasets[did] = dataset['accessed_at']
+            logging.debug('(__update_datasets) 1: datasets[did]: %s' %datasets[did])
         else:
             datasets[did] = max(datasets[did], dataset['accessed_at'])
+            logging.debug('(__update_datasets) 2: datasets[did]: %s' %datasets[did])
 
         if rse is None:
             continue
@@ -439,7 +444,7 @@ def __update_datasets(dataset_queue):
             dslocks[did][rse] = dataset['accessed_at']
         else:
             dslocks[did][rse] = max(dataset['accessed_at'], dslocks[did][rse])
-    logging.debug('(__update_dataset) fetched %d datasets from queue (%ds)' % (len_ds, time() - now))
+    logging.debug('(__update_datasets) fetched %d datasets from queue (%ds)' % (len_ds, time() - now))
 
     total, failed, start = 0, 0, time()
     for did, accessed_at in datasets.items():
