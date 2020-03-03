@@ -427,7 +427,7 @@ def __update_datasets(dataset_queue):
     for _ in range(0, len_ds):
         dataset = dataset_queue.get()
         did = '%s:%s' % (dataset['scope'].internal, dataset['name']
-        logging.debug('(__update_datasets) did: %s '%did)
+        logging.debug('(__update_datasets) did: %s ' %did)
         rse = dataset['rse_id']
         if did not in datasets:
             datasets[did] = dataset['accessed_at']
