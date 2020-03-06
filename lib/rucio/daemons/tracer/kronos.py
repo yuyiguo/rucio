@@ -549,7 +549,19 @@ def run(once=False, threads=1, sleep_time_datasets=60, sleep_time_files=60):
     Starts up the consumer threads
     """
     logging.info('resolving brokers')
-    f2()
+    s = inspect.stack()
+    print( "===Current function===:")
+    print("line number: %d" %s[0][2])
+    print("function name: %s" %s[0][3])
+    
+    print( "===Caller function===")
+    print("line number: %d" %s[1][2])
+    print("function name: %s" %s[1][3])
+    
+    print("===Outermost call===")
+    print("line number: %d" %s[2][2])
+    print("function name: %s" %s[2][3])
+
     brokers_alias = []
     brokers_resolved = []
     try:
