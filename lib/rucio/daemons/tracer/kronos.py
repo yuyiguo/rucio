@@ -70,17 +70,13 @@ graceful_stop = Event()
 
 def f2():
     s = inspect.stack()
-    print( "===Current function===:")
-    print("line number: %d" %s[0][2])
-    print("function name: %s" %s[0][3])
+    #print( "===Current function===:")
+    #print("line number: %d" %s[0][2])
+    #print("function name: %s" %s[0][3])
     
-    print( "===Caller function===")
-    print("line number: %d" %s[1][2])
-    print("function name: %s" %s[1][3])
+    print( "\n ===Caller function: line number: %d, function name: %s." %(s[1][2], s[1][3]))
     
-    print("===Outermost call===")
-    print("line number: %d" %s[2][2])
-    print("function name: %s" %s[2][3])
+    print("\n ===Outermost call: line number: %d, function name: %s." %(s[2][2], s[2][3]))
 
 
 class AMQConsumer(object):
@@ -99,7 +95,6 @@ class AMQConsumer(object):
         self.__dataset_queue = dataset_queue
         self.__bad_files_patterns = bad_files_patterns
         print('create a AMQConsumer... YYG')
-        f2()
    
     def on_error(self, headers, message):
         f2()
@@ -141,11 +136,14 @@ class AMQConsumer(object):
         self.__reports.append(report)
 
         try:
-            print('(kronos_file on_messages ) message received: %s %s %s' % (str(report['eventType']), report['filename'], report['remoteSite']))
+            print('(kronos_file on_messages) message received: %s %s %s' % (str(report['eventType']), report['filename'], report['remoteSite']))
         except Exception:
+            print('(kronos_file on_messages) failed print message') 
             pass
  
         print('(kronos_file on_messages ) chunksize: %d' %self.__chunksize)
+        self.__chunksize = 1
+        print('(kronos_file on_messages ) set chunksize to : %d' %self.__chunksize)
         if len(self.__ids) >= self.__chunksize:
             print('(kronos_file on_messages ) calling __upate_atime() ... YYG')
             self.__update_atime()
@@ -402,7 +400,6 @@ def kronos_file(once=False, thread=0, brokers_resolved=None, dataset_queue=None,
                 conn.subscribe(destination=config_get('tracer-kronos', 'queue'), ack='client-individual', id=subscription_id, headers={'activemq.prefetchSize': prefetch_size})
         tottime = time() - start_time
         if tottime < sleep_time:
-            f2()
             print('(kronos_file) Will sleep for %s seconds' % (sleep_time - tottime))
             sleep(sleep_time - tottime)
 
@@ -421,10 +418,11 @@ def kronos_file(once=False, thread=0, brokers_resolved=None, dataset_queue=None,
 
 
 def kronos_dataset(once=False, thread=0, dataset_queue=None, sleep_time=60):
+    f2()
     thread = current_thread()
     threadN = thread.getName()
     print('(kronos_dataset thread: %s) just starting YYG'%threadN)
-    f2()
+    print(dataset_queue)
     hostname = socket.gethostname()
     pid = getpid()
     thread = current_thread()
@@ -443,6 +441,7 @@ def kronos_dataset(once=False, thread=0, dataset_queue=None, sleep_time=60):
         print('(kronos_dataset) datetime.now() %s: ' %t)
         if (datetime.now() - start).seconds > dataset_wait:
             print('kronos_dataset: to be __update_dataset -- YYG ')
+            print(dataset_queue)
             __update_datasets(dataset_queue)
             start = datetime.now()
         tottime = time() - start_time
@@ -504,7 +503,7 @@ def __update_datasets(dataset_queue):
             print('__update_datasets: failed touch_dids -- YYG')
             failed += 1
         total += 1
-    print('(__update_dataset) did update for %d datasets, %d failed (%ds)' % (total, failed, time() - start))
+    print('(__update_dataset) did update for %d datasets, %d failed for %d second.)' % (total, failed, time() - start))
 
     total, failed, start = 0, 0, time()
     for did, rses in dslocks.items():
