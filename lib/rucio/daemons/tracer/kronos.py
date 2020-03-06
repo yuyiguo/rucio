@@ -79,7 +79,7 @@ def f2():
     logging.debug("function name: %s" %s[1][3])
     
     logging.debug("===Outermost call===")
-    logging.debug("line number: %d", %s[2][2])
+    logging.debug("line number: %d" %s[2][2])
     logging.debug("function name: %s" %s[2][3])
 
 
