@@ -28,6 +28,7 @@
 This daemon consumes tracer messages from ActiveMQ and updates the atime for replicas.
 """
 
+import inspect
 import logging
 import re
 import socket
@@ -67,6 +68,21 @@ logging.basicConfig(stream=stdout,
 graceful_stop = Event()
 
 
+def f2():
+    s = inspect.stack()
+    logging.debug( "===Current function===:")
+    logging.debug("line number: %d" %s[0][2])
+    print ("function name: %s" %s[0][3])
+    
+    logging.debug( "===Caller function===")
+    logging.debug("line number: %d" %s[1][2])
+    logging.debug("function name: %s" %s[1][3])
+    
+    logging.debug("===Outermost call===")
+    logging.debug("line number: %d", %s[2][2])
+    logging.debug("function name: %s" %s[2][3])
+
+
 class AMQConsumer(object):
     def __init__(self, broker, conn, queue, chunksize, subscription_id, excluded_usrdns, dataset_queue, bad_files_patterns):
         self.__broker = broker
@@ -83,12 +99,15 @@ class AMQConsumer(object):
         self.__dataset_queue = dataset_queue
         self.__bad_files_patterns = bad_files_patterns
         logging.debug('create a AMQConsumer... YYG')
+        f2()
    
     def on_error(self, headers, message):
+        f2()
         record_counter('daemons.tracer.kronos.error')
         logging.error('[%s] %s' % (self.__broker, message))
 
     def on_message(self, headers, message):
+        f2()
         logging.debug('on_messages ... YYG')
         record_counter('daemons.tracer.kronos.reports')
 
@@ -106,6 +125,7 @@ class AMQConsumer(object):
                 self.__conn.ack(msg_id, self.__subscription_id)
                 return
             else:
+                f2()
                 report = jloads(message)
                 logging.debug("message of on_messages: " + message )      
         except Exception:
@@ -114,6 +134,7 @@ class AMQConsumer(object):
             record_counter('daemons.tracer.kronos.json_error')
             logging.error('(kronos_file) json error')
             self.__conn.ack(msg_id, self.__subscription_id)
+            f2()
             return
 
         self.__ids.append(msg_id)
@@ -131,7 +152,7 @@ class AMQConsumer(object):
             logging.debug('(kronos_file on_messages ) done calling_upate_atime() ... YYG')
             for msg_id in self.__ids:
                 self.__conn.ack(msg_id, self.__subscription_id)
-
+                f2()
             self.__reports = []
             self.__ids = []
 
@@ -139,6 +160,7 @@ class AMQConsumer(object):
         """
         Bulk update atime.
         """
+        f2()
         logging.debug('(__upate_atime()) just got in  ... YYG')
         replicas = []
         rses = []
@@ -239,6 +261,7 @@ class AMQConsumer(object):
                     if 'datasetScope' in report:
                         logging.debug('(__upate_atime()) update __dataset_queue while datasetScope in report .. YYG')
                         self.__dataset_queue.put({'scope': report['datasetScope'], 'name': report['dataset'], 'rse_id': rse_id, 'accessed_at': datetime.utcfromtimestamp(report['traceTimeentryUnix'])})
+                        f2()
                         continue
                     else:
                         if 'remoteSite' not in report:
@@ -250,6 +273,7 @@ class AMQConsumer(object):
             except (KeyError, AttributeError):
                 logging.error(format_exc())
                 record_counter('daemons.tracer.kronos.report_error')
+                f2()
                 continue
 
             for did in list_parent_dids(report['scope'], report['filename']):
@@ -262,10 +286,12 @@ class AMQConsumer(object):
                     rse_id = get_rse_id(rse=rse)
                     logging.debug('(__upate_atime()) update __dataset_queue')
                     self.__dataset_queue.put({'scope': did['scope'], 'name': did['name'], 'did_type': did['type'], 'rse_id': rse_id, 'accessed_at': datetime.utcfromtimestamp(report['traceTimeentryUnix'])})
+                    f2()
         logging.debug('checking replicas in __update_atime')
         logging.debug(replicas)
 
         try:
+            f2()
             start_time = time()
             for replica in replicas:
                 # if touch replica hits a locked row put the trace back into queue for later retry
@@ -280,6 +306,7 @@ class AMQConsumer(object):
         except Exception:
             logging.error(format_exc())
             record_counter('daemons.tracer.kronos.update_error')
+            f2()
 
         logging.info('(kronos_file) updated %d replicas' % len(replicas))
 
@@ -290,7 +317,7 @@ def kronos_file(once=False, thread=0, brokers_resolved=None, dataset_queue=None,
     """
 
     logging.info('(kronos_file) tracer consumer starting')
-
+    f2()
     hostname = socket.gethostname()
     pid = getpid()
     thread = current_thread()
@@ -327,11 +354,13 @@ def kronos_file(once=False, thread=0, brokers_resolved=None, dataset_queue=None,
     conns = []
     for broker in brokers_resolved:
         if not use_ssl:
+            f2()
             conns.append(Connection(host_and_ports=[(broker, config_get_int('tracer-kronos', 'port'))],
                                     use_ssl=False,
                                     vhost=vhost,
                                     reconnect_attempts_max=config_get_int('tracer-kronos', 'reconnect_attempts')))
         else:
+            f2()
             conns.append(Connection(host_and_ports=[(broker, config_get_int('tracer-kronos', 'port'))],
                                     use_ssl=True,
                                     ssl_key_file=config_get('tracer-kronos', 'ssl_key_file'),
@@ -343,6 +372,7 @@ def kronos_file(once=False, thread=0, brokers_resolved=None, dataset_queue=None,
 
     sanity_check(executable='kronos-file', hostname=hostname)
     while not graceful_stop.is_set():
+        f2()
         start_time = time()
         live(executable='kronos-file', hostname=hostname, pid=pid, thread=thread)
         for conn in conns:
@@ -359,8 +389,10 @@ def kronos_file(once=False, thread=0, brokers_resolved=None, dataset_queue=None,
                                                                      dataset_queue=dataset_queue,
                                                                      bad_files_patterns=bad_files_patterns))
                 conn.start()
+                f2()
                 logging.info("connection started... YYG")
                 if not use_ssl:
+                    f2()
                     logging.info("To be connected with pd ... YYG")
                     conn.connect(username, password)
                     logging.info("connected with pd ... YYG")
@@ -369,6 +401,7 @@ def kronos_file(once=False, thread=0, brokers_resolved=None, dataset_queue=None,
                 conn.subscribe(destination=config_get('tracer-kronos', 'queue'), ack='client-individual', id=subscription_id, headers={'activemq.prefetchSize': prefetch_size})
         tottime = time() - start_time
         if tottime < sleep_time:
+            f2()
             logging.info('(kronos_file) Will sleep for %s seconds' % (sleep_time - tottime))
             sleep(sleep_time - tottime)
 
@@ -376,6 +409,8 @@ def kronos_file(once=False, thread=0, brokers_resolved=None, dataset_queue=None,
 
     for conn in conns:
         try:
+            f2()
+            logging.info('(kronos_file) disconnected  ... YYG')
             conn.disconnect()
         except Exception:
             pass
@@ -386,7 +421,7 @@ def kronos_file(once=False, thread=0, brokers_resolved=None, dataset_queue=None,
 
 def kronos_dataset(once=False, thread=0, dataset_queue=None, sleep_time=60):
     logging.debug('(kronos_dataset) just starting YYG')
-
+    f2()
     hostname = socket.gethostname()
     pid = getpid()
     thread = current_thread()
@@ -398,6 +433,7 @@ def kronos_dataset(once=False, thread=0, dataset_queue=None, sleep_time=60):
     logging.debug('(kronos_dataset) start: %s' %start)
     sanity_check(executable='kronos-dataset', hostname=hostname)
     while not graceful_stop.is_set():
+        f2()
         start_time = time()
         live(executable='kronos-dataset', hostname=hostname, pid=pid, thread=thread)
         t = datetime.now()
@@ -411,6 +447,7 @@ def kronos_dataset(once=False, thread=0, dataset_queue=None, sleep_time=60):
             logging.info('(kronos_dataset) Will sleep for %s seconds' % (sleep_time - tottime))
             sleep(sleep_time - tottime)
     # once again for the backlog
+    f2()
     die(executable='kronos-dataset', hostname=hostname, pid=pid, thread=thread)
     logging.info('(kronos_dataset) cleaning dataset backlog before shutdown...')
     logging.debug('kronos_dataset: to be __update_dataset 2 -- YYG ')
@@ -418,6 +455,7 @@ def kronos_dataset(once=False, thread=0, dataset_queue=None, sleep_time=60):
 
 
 def __update_datasets(dataset_queue):
+    f2()
     logging.info('(__update_dataset) starting YYG') 
     len_ds = dataset_queue.qsize()
     logging.debug('(__update_datasets) dataset_queue.qsize() : %d'%len_ds)
@@ -425,14 +463,17 @@ def __update_datasets(dataset_queue):
     dslocks = {}
     now = time()
     for _ in range(0, len_ds):
+        f2()
         dataset = dataset_queue.get()
         did = '%s:%s' % (dataset['scope'].internal, dataset['name'])
         logging.debug('(__update_datasets) did: %s ' %did)
         rse = dataset['rse_id']
         if did not in datasets:
+            f2()
             datasets[did] = dataset['accessed_at']
             logging.debug('(__update_datasets) 1: datasets[did]: %s' %datasets[did])
         else:
+            f2()
             datasets[did] = max(datasets[did], dataset['accessed_at'])
             logging.debug('(__update_datasets) 2: datasets[did]: %s' %datasets[did])
 
@@ -448,6 +489,7 @@ def __update_datasets(dataset_queue):
 
     total, failed, start = 0, 0, time()
     for did, accessed_at in datasets.items():
+        f2()
         scope, name = did.split(':')
         scope = InternalScope(scope, fromExternal=False)
         update_did = {'scope': scope, 'name': name, 'type': DIDType.DATASET, 'accessed_at': accessed_at}
@@ -463,6 +505,7 @@ def __update_datasets(dataset_queue):
 
     total, failed, start = 0, 0, time()
     for did, rses in dslocks.items():
+        f2()
         scope, name = did.split(':')
         scope = InternalScope(scope, fromExternal=False)
         for rse, accessed_at in rses.items():
@@ -476,13 +519,16 @@ def __update_datasets(dataset_queue):
 
     total, failed, start = 0, 0, time()
     for did, rses in dslocks.items():
+        f2()
         scope, name = did.split(':')
         scope = InternalScope(scope, fromExternal=False)
         for rse, accessed_at in rses.items():
+            f2()
             update_dslock = {'scope': scope, 'name': name, 'rse_id': rse, 'accessed_at': accessed_at}
             # if update fails, put back in queue and retry next time
             logging.debug('__update_datasets: to be touch_collection_replicas -- YYG')
             if not touch_collection_replicas((update_dslock,)):
+                f2()
                 dataset_queue.put(update_dslock)
                 failed += 1
                 logging.debug('__update_datasets: failed touch_collection_replicas -- YYG')
@@ -494,6 +540,7 @@ def stop(signum=None, frame=None):
     """
     Graceful exit.
     """
+    f2()
     graceful_stop.set()
 
 
@@ -502,7 +549,7 @@ def run(once=False, threads=1, sleep_time_datasets=60, sleep_time_files=60):
     Starts up the consumer threads
     """
     logging.info('resolving brokers')
-
+    f2()
     brokers_alias = []
     brokers_resolved = []
     try:
@@ -514,6 +561,7 @@ def run(once=False, threads=1, sleep_time_datasets=60, sleep_time_files=60):
 
     brokers_resolved = []
     for broker in brokers_alias:
+        f2()
         addrinfos = socket.getaddrinfo(broker, 0, socket.AF_INET, 0, socket.IPPROTO_TCP)
         brokers_resolved.extend(ai[4][0] for ai in addrinfos)
 
@@ -523,6 +571,7 @@ def run(once=False, threads=1, sleep_time_datasets=60, sleep_time_files=60):
     logging.info('starting tracer consumer threads')
 
     thread_list = []
+    f2()
     for thread in range(0, threads):
         thread_list.append(Thread(name='kronos_file_thread', target=kronos_file, kwargs={'thread': thread,
                                                               'sleep_time': sleep_time_files,
@@ -532,9 +581,11 @@ def run(once=False, threads=1, sleep_time_datasets=60, sleep_time_files=60):
                                                                  'sleep_time': sleep_time_datasets,
                                                                  'dataset_queue': dataset_queue}))
 
+    f2()
     [thread.start() for thread in thread_list]
-
+    f2()
     logging.info('waiting for interrupts')
 
     while thread_list > 0:
+        f2()
         thread_list = [thread.join(timeout=3) for thread in thread_list if thread and thread.isAlive()]
