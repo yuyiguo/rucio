@@ -70,17 +70,17 @@ graceful_stop = Event()
 
 def f2():
     s = inspect.stack()
-    logging.debug( "===Current function===:")
-    logging.debug("line number: %d" %s[0][2])
-    print ("function name: %s" %s[0][3])
+    print( "===Current function===:")
+    print("line number: %d" %s[0][2])
+    print("function name: %s" %s[0][3])
     
-    logging.debug( "===Caller function===")
-    logging.debug("line number: %d" %s[1][2])
-    logging.debug("function name: %s" %s[1][3])
+    print( "===Caller function===")
+    print("line number: %d" %s[1][2])
+    print("function name: %s" %s[1][3])
     
-    logging.debug("===Outermost call===")
-    logging.debug("line number: %d" %s[2][2])
-    logging.debug("function name: %s" %s[2][3])
+    print("===Outermost call===")
+    print("line number: %d" %s[2][2])
+    print("function name: %s" %s[2][3])
 
 
 class AMQConsumer(object):
@@ -558,9 +558,6 @@ def run(once=False, threads=1, sleep_time_datasets=60, sleep_time_files=60):
     print("line number: %d" %s[1][2])
     print("function name: %s" %s[1][3])
     
-    print("===Outermost call===")
-    print("line number: %d" %s[2][2])
-    print("function name: %s" %s[2][3])
 
     brokers_alias = []
     brokers_resolved = []
@@ -573,7 +570,6 @@ def run(once=False, threads=1, sleep_time_datasets=60, sleep_time_files=60):
 
     brokers_resolved = []
     for broker in brokers_alias:
-        f2()
         addrinfos = socket.getaddrinfo(broker, 0, socket.AF_INET, 0, socket.IPPROTO_TCP)
         brokers_resolved.extend(ai[4][0] for ai in addrinfos)
 
@@ -583,7 +579,6 @@ def run(once=False, threads=1, sleep_time_datasets=60, sleep_time_files=60):
     logging.info('starting tracer consumer threads')
 
     thread_list = []
-    f2()
     for thread in range(0, threads):
         thread_list.append(Thread(name='kronos_file_thread', target=kronos_file, kwargs={'thread': thread,
                                                               'sleep_time': sleep_time_files,
@@ -593,11 +588,8 @@ def run(once=False, threads=1, sleep_time_datasets=60, sleep_time_files=60):
                                                                  'sleep_time': sleep_time_datasets,
                                                                  'dataset_queue': dataset_queue}))
 
-    f2()
     [thread.start() for thread in thread_list]
-    f2()
     logging.info('waiting for interrupts')
 
     while thread_list > 0:
-        f2()
         thread_list = [thread.join(timeout=3) for thread in thread_list if thread and thread.isAlive()]
